@@ -1,0 +1,14 @@
+[package]
+name = "thunderobot"
+version = "1.0.0"
+edition = "2021"
+description = "Thunderobot laptop management tool"
+license = "GPL-2.0"
+
+[[bin]]
+name = "thunderobot"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"

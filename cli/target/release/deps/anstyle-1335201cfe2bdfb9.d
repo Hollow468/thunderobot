@@ -1,0 +1,12 @@
+/home/hollow/repo/tbbook/thunderobot/cli/target/release/deps/anstyle-1335201cfe2bdfb9.d: /home/hollow/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-1.0.14/src/lib.rs /home/hollow/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-1.0.14/src/macros.rs /home/hollow/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-1.0.14/src/color.rs /home/hollow/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-1.0.14/src/effect.rs /home/hollow/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-1.0.14/src/reset.rs /home/hollow/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-1.0.14/src/style.rs
+
+/home/hollow/repo/tbbook/thunderobot/cli/target/release/deps/libanstyle-1335201cfe2bdfb9.rlib: /home/hollow/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-1.0.14/src/lib.rs /home/hollow/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-1.0.14/src/macros.rs /home/hollow/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-1.0.14/src/color.rs /home/hollow/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-1.0.14/src/effect.rs /home/hollow/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-1.0.14/src/reset.rs /home/hollow/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-1.0.14/src/style.rs
+
+/home/hollow/repo/tbbook/thunderobot/cli/target/release/deps/libanstyle-1335201cfe2bdfb9.rmeta: /home/hollow/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-1.0.14/src/lib.rs /home/hollow/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-1.0.14/src/macros.rs /home/hollow/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-1.0.14/src/color.rs /home/hollow/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-1.0.14/src/effect.rs /home/hollow/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-1.0.14/src/reset.rs /home/hollow/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-1.0.14/src/style.rs
+
+/home/hollow/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-1.0.14/src/lib.rs:
+/home/hollow/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-1.0.14/src/macros.rs:
+/home/hollow/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-1.0.14/src/color.rs:
+/home/hollow/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-1.0.14/src/effect.rs:
+/home/hollow/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-1.0.14/src/reset.rs:
+/home/hollow/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-1.0.14/src/style.rs:
