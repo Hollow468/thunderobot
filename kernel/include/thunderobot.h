@@ -11,6 +11,7 @@
 #define _THUNDEROBOT_H_
 
 #include <linux/types.h>
+#include <linux/unaligned.h>
 
 /* ACPI interface */
 #define TB_GWMI_PATH		"\\_SB.GWMI"
@@ -49,5 +50,8 @@ static inline void tb_build_smi(u8 *buf, u16 cmd, u16 func, u32 arg1, u32 arg2)
 
 /* ACPI WSAA call - defined in thunderobot-core.c */
 int tb_wsaa_call(const u8 *in_buf, u8 *out_buf);
+
+/* Parent sysfs kobject - defined in thunderobot-core.c */
+struct kobject *tb_get_kobj(void);
 
 #endif /* _THUNDEROBOT_H_ */

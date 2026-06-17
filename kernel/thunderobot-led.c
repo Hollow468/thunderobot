@@ -257,14 +257,13 @@ static int __init thunderobot_led_init(void)
 	struct kobject *tb_kobj;
 	int ret;
 
-	tb_kobj = kobject_create_and_add("thunderobot", kernel_kobj);
+	tb_kobj = tb_get_kobj();
 	if (!tb_kobj) {
-		pr_err("thunderobot-led: failed to create parent sysfs directory\n");
-		return -ENOMEM;
+		pr_err("thunderobot-led: thunderobot-core not loaded\n");
+		return -ENODEV;
 	}
 
 	led_kobj = kobject_create_and_add("led", tb_kobj);
-	kobject_put(tb_kobj);
 	if (!led_kobj) {
 		pr_err("thunderobot-led: failed to create led sysfs directory\n");
 		return -ENOMEM;
@@ -298,3 +297,4 @@ module_exit(thunderobot_led_exit);
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("HollowDream");
 MODULE_DESCRIPTION("Thunderobot LED control via ACPI WSAA");
+MODULE_SOFTDEP("pre: thunderobot_core");

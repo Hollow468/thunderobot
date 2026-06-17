@@ -10,10 +10,24 @@
 #include <linux/acpi.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
+#include <linux/kobject.h>
 #include <linux/module.h>
+#include <linux/sysfs.h>
 #include "include/thunderobot.h"
 
 static acpi_handle h_gwmi;
+static struct kobject *tb_kobj;
+
+/**
+ * tb_get_kobj - Get the parent /sys/kernel/thunderobot kobject
+ *
+ * Returns the shared kobject, or NULL if core is not loaded.
+ */
+struct kobject *tb_get_kobj(void)
+{
+	return tb_kobj;
+}
+EXPORT_SYMBOL_GPL(tb_get_kobj);
 
 /**
  * tb_wsaa_call - Call the ACPI WSAA method
@@ -78,12 +92,22 @@ static int __init thunderobot_core_init(void)
 		return -ENODEV;
 	}
 
+	tb_kobj = kobject_create_and_add("thunderobot", kernel_kobj);
+	if (!tb_kobj) {
+		pr_err("thunderobot: failed to create sysfs directory\n");
+		return -ENOMEM;
+	}
+
 	pr_info("thunderobot: core module loaded\n");
 	return 0;
 }
 
 static void __exit thunderobot_core_exit(void)
 {
+	if (tb_kobj) {
+		kobject_put(tb_kobj);
+		tb_kobj = NULL;
+	}
 	pr_info("thunderobot: core module unloaded\n");
 }
 

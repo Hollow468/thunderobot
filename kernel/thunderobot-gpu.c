@@ -67,15 +67,13 @@ static int __init thunderobot_gpu_init(void)
 	struct kobject *tb_kobj;
 	int ret;
 
-	/* Find or create parent kobject */
-	tb_kobj = kobject_create_and_add("thunderobot", kernel_kobj);
+	tb_kobj = tb_get_kobj();
 	if (!tb_kobj) {
-		pr_err("thunderobot-gpu: failed to create parent sysfs directory\n");
-		return -ENOMEM;
+		pr_err("thunderobot-gpu: thunderobot-core not loaded\n");
+		return -ENODEV;
 	}
 
 	gpu_kobj = kobject_create_and_add("gpu", tb_kobj);
-	kobject_put(tb_kobj);
 	if (!gpu_kobj) {
 		pr_err("thunderobot-gpu: failed to create gpu sysfs directory\n");
 		return -ENOMEM;
@@ -109,3 +107,4 @@ module_exit(thunderobot_gpu_exit);
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("HollowDream");
 MODULE_DESCRIPTION("Thunderobot GPU mode switching via ACPI WSAA");
+MODULE_SOFTDEP("pre: thunderobot_core");

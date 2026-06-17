@@ -2,8 +2,10 @@ mod gpu;
 mod led;
 mod sysfs;
 
+use std::io;
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::{generate, Shell};
 
 #[derive(Parser)]
 #[command(name = "thunderobot")]
@@ -26,6 +28,12 @@ enum Commands {
         #[command(subcommand)]
         action: led::LedAction,
     },
+    /// Generate shell completion scripts
+    Completions {
+        /// Shell to generate completions for
+        #[arg(value_enum)]
+        shell: Shell,
+    },
 }
 
 fn main() -> Result<()> {
@@ -34,5 +42,10 @@ fn main() -> Result<()> {
     match cli.command {
         Commands::Gpu { action } => gpu::run(action),
         Commands::Led { action } => led::run(action),
+        Commands::Completions { shell } => {
+            let mut cmd = Cli::command();
+            generate(shell, &mut cmd, "thunderobot", &mut io::stdout());
+            Ok(())
+        }
     }
 }

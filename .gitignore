@@ -1,6 +1,33 @@
-.omc
-.claude
-.gemini
-.copilot
-.idea
+# IDE and Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
 
+
+.omc/
+.claude/
+.gemini/
+.copilot/
+
+
+cli/Cargo.lock
+cli/target/*
+
+*.ko
+*.mod
+*.mod.c
+*.o
+*.cmd
+.*.cmd
+.*.o
+Module.symvers
+modules.order
+
+# Misc
+*.log
+*.tmp
+*.bak
