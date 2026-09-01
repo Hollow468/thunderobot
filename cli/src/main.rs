@@ -1,5 +1,6 @@
 mod gpu;
 mod led;
+mod power;
 mod sysfs;
 
 use std::io;
@@ -28,6 +29,11 @@ enum Commands {
         #[command(subcommand)]
         action: led::LedAction,
     },
+    /// Power / performance mode management
+    Power {
+        #[command(subcommand)]
+        action: power::PowerAction,
+    },
     /// Generate shell completion scripts
     Completions {
         /// Shell to generate completions for
@@ -42,6 +48,7 @@ fn main() -> Result<()> {
     match cli.command {
         Commands::Gpu { action } => gpu::run(action),
         Commands::Led { action } => led::run(action),
+        Commands::Power { action } => power::run(action),
         Commands::Completions { shell } => {
             let mut cmd = Cli::command();
             generate(shell, &mut cmd, "thunderobot", &mut io::stdout());
