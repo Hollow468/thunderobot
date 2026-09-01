@@ -26,6 +26,7 @@
 #define TB_SMI_FUNC_HWINFO	0x0200
 #define TB_SMI_FUNC_GPU		0x0203
 #define TB_SMI_FUNC_ADAPTER	0x0206
+#define TB_SMI_FUNC_PERF	0x0300
 
 /* SMI buffer size */
 #define TB_SMI_BUF_SIZE		32
