@@ -1,6 +1,6 @@
 # Thunderobot Linux 平台驱动
 
-雷神 (Thunderobot) 笔记本 Linux 平台驱动，支持 GPU 模式切换和 LED 控制。
+雷神 (Thunderobot) 笔记本 Linux 平台驱动，支持 GPU 模式切换、LED 控制和性能模式切换。
 
 从雷神 ControlCenter (Windows) 反编译代码逆向而来。
 
@@ -14,9 +14,8 @@
 ```
 thunderobot/
 ├── kernel/                  # 内核模块 (C)
-│   ├── thunderobot-core.c   # ACPI WSAA 通信层
-│   ├── thunderobot-gpu.c    # GPU 模式切换
-│   ├── thunderobot-led.c    # LED 控制
+│   ├── thunderobot.c        # 统一平台驱动（ACPI/GPU/LED/Power）
+│   ├── include/thunderobot.h
 │   ├── Makefile
 │   └── dkms.conf
 │
@@ -26,6 +25,7 @@ thunderobot/
 │       ├── main.rs
 │       ├── gpu.rs
 │       ├── led.rs
+│       ├── power.rs
 │       └── sysfs.rs
 │
 └── README.md
@@ -43,7 +43,7 @@ make
 
 # 或使用 DKMS (推荐)
 sudo dkms add .
-sudo dkms install thunderobot/1.0.0
+sudo dkms install thunderobot/1.1.0
 ```
 
 ### CLI 工具
@@ -59,9 +59,7 @@ cargo build --release
 ### 加载内核模块
 
 ```bash
-sudo insmod thunderobot-core.ko
-sudo insmod thunderobot-gpu.ko
-sudo insmod thunderobot-led.ko
+sudo insmod thunderobot.ko
 ```
 
 ### GPU 模式切换
@@ -74,6 +72,18 @@ thunderobot gpu status
 thunderobot gpu set 1    # 混合模式
 thunderobot gpu set 2    # 独显模式
 thunderobot gpu set 3    # 核显模式
+```
+
+### 性能模式切换
+
+```bash
+# 查看当前性能模式
+thunderobot power status
+
+# 切换模式
+thunderobot power set 0    # 高性能模式
+thunderobot power set 1    # 游戏模式
+thunderobot power set 2    # 办公/音频模式
 ```
 
 ### LED 控制
@@ -110,6 +120,8 @@ thunderobot led apply
 /sys/kernel/thunderobot/
 ├── gpu/
 │   └── mode          # RW, GPU 模式 (1/2/3)
+├── power/
+│   └── mode          # RW, 性能模式 (0/1/2)
 └── led/
     ├── mode          # RW, LED 模式 (0-7)
     ├── brightness    # RW, 亮度 (0-15)
@@ -131,6 +143,14 @@ thunderobot led apply
 | 7 | TRUNK | 尾灯/灯带 |
 | 8 | LOGO | Logo 灯 |
 
+## 性能模式
+
+| 模式 | 值 | 说明 |
+|------|-----|------|
+| HIGH_PERFORMANCE | 0 | 高性能 |
+| GAMING | 1 | 游戏模式 |
+| OFFICE_AUDIO | 2 | 办公/音频模式 |
+
 ## LED 模式
 
 | 模式 | 值 | 说明 |
@@ -145,12 +165,10 @@ thunderobot led apply
 
 ```bash
 # 卸载内核模块
-sudo rmmod thunderobot-led
-sudo rmmod thunderobot-gpu
-sudo rmmod thunderobot-core
+sudo rmmod thunderobot
 
 # 或 DKMS
-sudo dkms remove thunderobot/1.0.0 --all
+sudo dkms remove thunderobot/1.1.0 --all
 ```
 
 ## 许可证
