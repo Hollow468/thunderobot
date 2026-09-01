@@ -529,6 +529,92 @@ static void tb_feature_adapter_exit(void)
 	}
 }
 
+/* -------------------- Power -------------------- */
+
+static struct kobject *power_kobj;
+static u32 cur_power_mode;
+
+static int perf_set_mode(u32 mode)
+{
+	u8 buf[TB_SMI_BUF_SIZE];
+
+	if (mode > 2)
+		return -EINVAL;
+
+	tb_build_smi(buf, TB_SMI_CMD_SET, TB_SMI_FUNC_PERF, mode, 0);
+	return tb_wsaa_call(buf, NULL);
+}
+
+static ssize_t mode_show(struct kobject *k, struct kobj_attribute *a, char *buf)
+{
+	return sysfs_emit(buf, "%u\n", cur_power_mode);
+}
+
+static ssize_t mode_store(struct kobject *k, struct kobj_attribute *a,
+			  const char *buf, size_t count)
+{
+	unsigned long mode;
+	int ret;
+
+	ret = kstrtoul(buf, 0, &mode);
+	if (ret)
+		return ret;
+
+	if (mode > 2)
+		return -EINVAL;
+
+	ret = perf_set_mode((u32)mode);
+	if (ret)
+		return ret;
+
+	cur_power_mode = (u32)mode;
+	return count;
+}
+
+static struct kobj_attribute power_mode_attr =
+	__ATTR(mode, 0644, mode_show, mode_store);
+
+static struct attribute *power_attrs[] = {
+	&power_mode_attr.attr,
+	NULL,
+};
+
+static struct attribute_group power_attr_group = {
+	.attrs = power_attrs,
+};
+
+static int tb_feature_power_init(struct kobject *parent)
+{
+	int ret;
+
+	power_kobj = kobject_create_and_add("power", parent);
+	if (!power_kobj) {
+		pr_err("thunderobot: failed to create power sysfs directory\n");
+		return -ENOMEM;
+	}
+
+	ret = sysfs_create_group(power_kobj, &power_attr_group);
+	if (ret) {
+		pr_err("thunderobot: failed to create power sysfs group\n");
+		kobject_put(power_kobj);
+		power_kobj = NULL;
+		return ret;
+	}
+
+	cur_power_mode = 2;
+	pr_info("thunderobot: power feature registered\n");
+	return 0;
+}
+
+static void tb_feature_power_exit(void)
+{
+	if (power_kobj) {
+		sysfs_remove_group(power_kobj, &power_attr_group);
+		kobject_put(power_kobj);
+		power_kobj = NULL;
+	}
+}
+
 /* -------------------- Unified lifecycle -------------------- */
 
 static const struct tb_feature tb_features[] = {
@@ -546,6 +632,11 @@ static const struct tb_feature tb_features[] = {
 		.name = "adapter",
 		.init = tb_feature_adapter_init,
 		.exit = tb_feature_adapter_exit,
+	},
+	{
+		.name = "power",
+		.init = tb_feature_power_init,
+		.exit = tb_feature_power_exit,
 	},
 };
 
