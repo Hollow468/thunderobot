@@ -6,13 +6,11 @@
  *   - ACPI WSAA communication layer
  *   - GPU mode switching
  *   - LED control
- *   - Adapter type detection
  *
  * Sysfs layout:
  *   /sys/kernel/thunderobot/
  *       gpu/mode
  *       led/{mode,brightness,color,zone,status,apply}
- *       adapter/{type,is_type_c}
  *
  * Copyright (C) 2026 HollowDream
  */
@@ -431,104 +429,6 @@ static void tb_feature_led_exit(void)
 	}
 }
 
-/* -------------------- Adapter -------------------- */
-
-static struct kobject *adapter_kobj;
-
-static int adapter_get_type(bool *is_type_c)
-{
-	u8 buf[TB_SMI_BUF_SIZE];
-	u8 resp[TB_SMI_BUF_SIZE];
-	u32 a4;
-	int ret;
-
-	tb_build_smi(buf, TB_SMI_CMD_GET, TB_SMI_FUNC_ADAPTER, 0, 0);
-	ret = tb_wsaa_call(buf, resp);
-	if (ret)
-		return ret;
-
-	a4 = get_unaligned_le32(&resp[12]);
-	if (a4 == 1)
-		*is_type_c = true;
-	else
-		*is_type_c = false;
-
-	return 0;
-}
-
-static ssize_t type_show(struct kobject *k, struct kobj_attribute *a,
-				 char *buf)
-{
-	bool is_type_c = false;
-	int ret;
-
-	ret = adapter_get_type(&is_type_c);
-	if (ret)
-		return sysfs_emit(buf, "Unknown\n");
-
-	return sysfs_emit(buf, "%s\n", is_type_c ? "Type-C" : "AC");
-}
-
-static struct kobj_attribute adapter_type_attr =
-	__ATTR_RO(type);
-
-static ssize_t is_type_c_show(struct kobject *k,
-				      struct kobj_attribute *a, char *buf)
-{
-	bool is_type_c = false;
-	int ret;
-
-	ret = adapter_get_type(&is_type_c);
-	if (ret)
-		return ret;
-
-	return sysfs_emit(buf, "%d\n", is_type_c ? 1 : 0);
-}
-
-static struct kobj_attribute adapter_is_type_c_attr =
-	__ATTR_RO(is_type_c);
-
-static struct attribute *adapter_attrs[] = {
-	&adapter_type_attr.attr,
-	&adapter_is_type_c_attr.attr,
-	NULL,
-};
-
-static struct attribute_group adapter_attr_group = {
-	.attrs = adapter_attrs,
-};
-
-static int tb_feature_adapter_init(struct kobject *parent)
-{
-	int ret;
-
-	adapter_kobj = kobject_create_and_add("adapter", parent);
-	if (!adapter_kobj) {
-		pr_err("thunderobot: failed to create adapter sysfs directory\n");
-		return -ENOMEM;
-	}
-
-	ret = sysfs_create_group(adapter_kobj, &adapter_attr_group);
-	if (ret) {
-		pr_err("thunderobot: failed to create adapter sysfs group\n");
-		kobject_put(adapter_kobj);
-		adapter_kobj = NULL;
-		return ret;
-	}
-
-	pr_info("thunderobot: adapter feature registered\n");
-	return 0;
-}
-
-static void tb_feature_adapter_exit(void)
-{
-	if (adapter_kobj) {
-		sysfs_remove_group(adapter_kobj, &adapter_attr_group);
-		kobject_put(adapter_kobj);
-		adapter_kobj = NULL;
-	}
-}
-
 /* -------------------- Power -------------------- */
 
 static struct kobject *power_kobj;
@@ -627,11 +527,6 @@ static const struct tb_feature tb_features[] = {
 		.name = "led",
 		.init = tb_feature_led_init,
 		.exit = tb_feature_led_exit,
-	},
-	{
-		.name = "adapter",
-		.init = tb_feature_adapter_init,
-		.exit = tb_feature_adapter_exit,
 	},
 	{
 		.name = "power",
