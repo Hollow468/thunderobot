@@ -5,10 +5,8 @@
 
 KDIR ?= /lib/modules/$(shell uname -r)/build
 
-# Build all modules
-obj-m += thunderobot-core.o
-obj-m += thunderobot-gpu.o
-obj-m += thunderobot-led.o
+# Build unified module
+obj-m += thunderobot.o
 
 all:
 	$(MAKE) -C $(KDIR) M=$(PWD) modules
@@ -21,9 +19,7 @@ install: all
 	depmod -a
 
 uninstall:
-	rm -f /lib/modules/$(shell uname -r)/extra/thunderobot-core.ko
-	rm -f /lib/modules/$(shell uname -r)/extra/thunderobot-gpu.ko
-	rm -f /lib/modules/$(shell uname -r)/extra/thunderobot-led.ko
+	rm -f /lib/modules/$(shell uname -r)/extra/thunderobot.ko
 	depmod -a
 
 .PHONY: all clean install uninstall
