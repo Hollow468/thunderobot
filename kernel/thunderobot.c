@@ -19,6 +19,7 @@
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/kobject.h>
+#include <linux/string.h>
 #include <linux/mutex.h>
 #include <linux/module.h>
 #include <linux/sysfs.h>
@@ -58,24 +59,37 @@ int tb_wsaa_call(const u8 *in_buf, u8 *out_buf)
 		};
 
 		st = acpi_evaluate_object(h_gwmi, TB_WSAA_METHOD, &args, &output);
-		if (ACPI_SUCCESS(st) && output.pointer) {
-			union acpi_object *obj = output.pointer;
-
-			if (obj->type == ACPI_TYPE_BUFFER &&
-			    obj->buffer.length >= TB_SMI_BUF_SIZE)
-				memcpy(out_buf, obj->buffer.pointer,
-				       TB_SMI_BUF_SIZE);
-			kfree(output.pointer);
+		if (ACPI_FAILURE(st)) {
+			pr_err("thunderobot: ACPI WSAA call failed (status=0x%x)\n",
+			       st);
+			return -EIO;
 		}
+
+		if (!output.pointer) {
+			pr_err("thunderobot: ACPI WSAA call returned NULL output\n");
+			kfree(output.pointer);
+			return -EIO;
+		}
+
+		if (((union acpi_object *)output.pointer)->type != ACPI_TYPE_BUFFER ||
+		    ((union acpi_object *)output.pointer)->buffer.length < TB_SMI_BUF_SIZE) {
+			pr_err("thunderobot: ACPI WSAA call returned invalid output\n");
+			kfree(output.pointer);
+			return -EIO;
+		}
+
+		memcpy(out_buf, ((union acpi_object *)output.pointer)->buffer.pointer,
+		       TB_SMI_BUF_SIZE);
+		kfree(output.pointer);
 	} else {
 		st = acpi_evaluate_object(h_gwmi, TB_WSAA_METHOD, &args, NULL);
+		if (ACPI_FAILURE(st)) {
+			pr_err("thunderobot: ACPI WSAA call failed (status=0x%x)\n",
+			       st);
+			return -EIO;
+		}
 	}
 
-	if (ACPI_FAILURE(st)) {
-		pr_err("thunderobot: ACPI WSAA call failed (status=0x%x)\n",
-		       st);
-		return -EIO;
-	}
 	return 0;
 }
 EXPORT_SYMBOL_GPL(tb_wsaa_call);
@@ -433,6 +447,22 @@ static void tb_feature_led_exit(void)
 
 static struct kobject *power_kobj;
 static u32 cur_power_mode;
+static DEFINE_MUTEX(power_lock);
+
+static int power_get_mode(u32 *mode)
+{
+	u8 buf[TB_SMI_BUF_SIZE];
+	u8 resp[TB_SMI_BUF_SIZE];
+	int ret;
+
+	tb_build_smi(buf, TB_SMI_CMD_GET, TB_SMI_FUNC_PERF, 0, 0);
+	ret = tb_wsaa_call(buf, resp);
+	if (ret)
+		return ret;
+
+	*mode = get_unaligned_le32(&resp[8]);
+	return 0;
+}
 
 static int perf_set_mode(u32 mode)
 {
@@ -445,13 +475,21 @@ static int perf_set_mode(u32 mode)
 	return tb_wsaa_call(buf, NULL);
 }
 
-static ssize_t mode_show(struct kobject *k, struct kobj_attribute *a, char *buf)
+static ssize_t power_mode_show(struct kobject *k, struct kobj_attribute *a, char *buf)
 {
-	return sysfs_emit(buf, "%u\n", cur_power_mode);
+	u32 mode;
+	int ret;
+
+	mutex_lock(&power_lock);
+	mode = cur_power_mode;
+	mutex_unlock(&power_lock);
+
+	ret = sysfs_emit(buf, "%u\n", mode);
+	return ret;
 }
 
-static ssize_t mode_store(struct kobject *k, struct kobj_attribute *a,
-			  const char *buf, size_t count)
+static ssize_t power_mode_store(struct kobject *k, struct kobj_attribute *a,
+				const char *buf, size_t count)
 {
 	unsigned long mode;
 	int ret;
@@ -463,16 +501,21 @@ static ssize_t mode_store(struct kobject *k, struct kobj_attribute *a,
 	if (mode > 2)
 		return -EINVAL;
 
+	mutex_lock(&power_lock);
 	ret = perf_set_mode((u32)mode);
 	if (ret)
+	{
+		mutex_unlock(&power_lock);
 		return ret;
+	}
 
 	cur_power_mode = (u32)mode;
+	mutex_unlock(&power_lock);
 	return count;
 }
 
 static struct kobj_attribute power_mode_attr =
-	__ATTR(mode, 0644, mode_show, mode_store);
+	__ATTR(mode, 0644, power_mode_show, power_mode_store);
 
 static struct attribute *power_attrs[] = {
 	&power_mode_attr.attr,
@@ -501,7 +544,12 @@ static int tb_feature_power_init(struct kobject *parent)
 		return ret;
 	}
 
-	cur_power_mode = 2;
+	ret = power_get_mode(&cur_power_mode);
+	if (ret) {
+		cur_power_mode = 2;
+		pr_warn("thunderobot: failed to read power mode, fallback to %u\n",
+			cur_power_mode);
+	}
 	pr_info("thunderobot: power feature registered\n");
 	return 0;
 }
