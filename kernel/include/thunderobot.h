@@ -3,6 +3,7 @@
  * thunderobot.h - Thunderobot laptop platform driver common definitions
  *
  * Shared ACPI WSAA interface for GPU mode switching and LED control.
+ * Also exposes a sysfs power mode interface for performance switching.
  *
  * Copyright (C) 2026 HollowDream
  */
@@ -11,6 +12,7 @@
 #define _THUNDEROBOT_H_
 
 #include <linux/types.h>
+#include <linux/string.h>
 #include <linux/unaligned.h>
 
 /* ACPI interface */
