@@ -84,6 +84,12 @@ thunderobot power status
 thunderobot power set 0    # 高性能模式
 thunderobot power set 1    # 游戏模式
 thunderobot power set 2    # 办公/音频模式
+
+# 保存当前性能模式到本地配置
+thunderobot power save
+
+# 从本地配置恢复性能模式
+thunderobot power restore
 ```
 
 ### LED 控制
