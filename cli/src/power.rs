@@ -11,7 +11,7 @@ pub enum PowerAction {
     Set {
         /// Mode: 0=High Performance, 1=Gaming, 2=Office/Audio
         #[arg(value_parser = clap::value_parser!(u8).range(0..=2))]
-        mode: u8,
+        mode: Option<u8>,
     },
     /// Save current performance mode to local config
     Save,
@@ -53,6 +53,11 @@ pub fn run(action: PowerAction) -> Result<()> {
             Ok(())
         }
         PowerAction::Set { mode } => {
+            let mode = mode.ok_or_else(|| {
+                anyhow::anyhow!(
+                    "MODE is required; supported values: 0=High Performance, 1=Gaming, 2=Office/Audio"
+                )
+            })?;
             if !sysfs::is_available() {
                 bail!("thunderobot module not loaded");
             }
