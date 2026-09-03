@@ -10,7 +10,7 @@ use clap_complete::{generate, Shell};
 
 #[derive(Parser)]
 #[command(name = "thunderobot")]
-#[command(version = "1.0.0")]
+#[command(version = "1.2.0")]
 #[command(about = "Thunderobot laptop management tool")]
 struct Cli {
     #[command(subcommand)]
