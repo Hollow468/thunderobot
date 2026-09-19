@@ -13,6 +13,7 @@ Thumbs.db
 .claude/
 .gemini/
 .copilot/
+AGENTS.md
 
 
 cli/Cargo.lock
