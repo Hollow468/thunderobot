@@ -1,6 +1,6 @@
 # Thunderobot Linux 平台驱动
 
-雷神 (Thunderobot) 笔记本 Linux 平台驱动，支持 GPU 模式切换、LED 控制和性能模式切换。
+雷神 (Thunderobot) 笔记本 Linux 平台驱动，支持 GPU 模式切换、LED 控制、性能模式切换与风扇控制。
 
 从雷神 ControlCenter (Windows) 反编译代码逆向而来。
 
@@ -14,7 +14,7 @@
 ```
 thunderobot/
 ├── kernel/                  # 内核模块 (C)
-│   ├── thunderobot.c        # 统一平台驱动（ACPI/GPU/LED/Power）
+│   ├── thunderobot.c        # 统一平台驱动（ACPI/GPU/LED/Power/Fan）
 │   ├── include/thunderobot.h
 │   ├── Makefile
 │   └── dkms.conf
@@ -23,6 +23,7 @@ thunderobot/
 │   ├── Cargo.toml
 │   └── src/
 │       ├── main.rs
+│       ├── fan.rs
 │       ├── gpu.rs
 │       ├── led.rs
 │       ├── power.rs
@@ -43,7 +44,7 @@ make
 
 # 或使用 DKMS (推荐)
 sudo dkms add .
-sudo dkms install thunderobot/1.1.0
+sudo dkms install thunderobot/1.3.0
 ```
 
 ### CLI 工具
@@ -60,6 +61,32 @@ cargo build --release
 
 ```bash
 sudo insmod thunderobot.ko
+```
+
+### 风扇控制
+
+```bash
+# 查看风扇状态（实时转速、温度、占空比、控制模式）
+thunderobot fan status
+
+# 恢复 EC 自动温控
+thunderobot fan auto
+# 或
+thunderobot fan mode 0
+
+# 切换为手动控制
+thunderobot fan mode 1
+
+# 设置风扇转速 (0-100%)
+thunderobot fan set 80                    # 所有风扇 80%
+thunderobot fan set --cpu 80 --gpu 70     # 单独指定 CPU / GPU 转速
+thunderobot fan set auto                  # 恢复自动
+
+# 一键满血全速 (100% 狂暴散热)
+thunderobot fan boost
+
+# 查看机型预设的 8 档温度插值曲线
+thunderobot fan curve show
 ```
 
 ### GPU 模式切换
@@ -124,6 +151,21 @@ thunderobot led apply
 
 ```
 /sys/kernel/thunderobot/
+├── fan/
+│   ├── mode          # RW, 风扇控制模式 (0: 自动EC托管, 1: 手动模式)
+│   ├── speed         # RW, 综合风扇转速百分比 (0-100 或 255)
+│   ├── cpu_speed     # RW, CPU 风扇目标占空比 (0-100)
+│   ├── gpu_speed     # RW, GPU 风扇目标占空比 (0-100)
+│   ├── sys_speed     # RW, SYS 风扇目标占空比 (0-100)
+│   ├── cpu_temp      # RO, CPU 温度 (°C)
+│   ├── gpu_temp      # RO, GPU 温度 (°C)
+│   ├── sys_temp      # RO, SYS 温度 (°C, 3风扇机型)
+│   ├── cpu_rpm       # RO, CPU 风扇转速 (RPM)
+│   ├── gpu_rpm       # RO, GPU 风扇转速 (RPM)
+│   ├── sys_rpm       # RO, SYS 风扇转速 (RPM, 3风扇机型)
+│   ├── fans_count    # RO, 风扇数量 (2 或 3)
+│   ├── profile       # RO, EC 默认风扇配置 ID (1..4)
+│   └── status        # RO, 综合风扇状态概览
 ├── gpu/
 │   └── mode          # RW, GPU 模式 (1/2/3)
 ├── power/
@@ -174,9 +216,10 @@ thunderobot led apply
 sudo rmmod thunderobot
 
 # 或 DKMS
-sudo dkms remove thunderobot/1.1.0 --all
+sudo dkms remove thunderobot/1.3.0 --all
 ```
 
 ## 许可证
 
 GPL-2.0
+
