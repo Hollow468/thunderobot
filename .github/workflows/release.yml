@@ -132,9 +132,24 @@ jobs:
           find release-artifacts -type f \( -name "*.tar.gz" -o -name "*.sha256" \) -exec cp {} dist/ \;
           ls -la dist/
 
+      - name: Determine tag name
+        id: tag
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          if [[ "${GITHUB_REF}" != refs/tags/* ]]; then
+            TAG="${{ inputs.tag }}"
+          fi
+          if [ -z "${TAG}" ]; then
+            TAG="v$(grep -E '^version[[:space:]]*=' cli/Cargo.toml | head -n 1 | cut -d '"' -f 2)"
+          fi
+          echo "tag_name=${TAG}" >> $GITHUB_OUTPUT
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.tag.outputs.tag_name }}
+          name: ${{ steps.tag.outputs.tag_name }}
           files: dist/*
           generate_release_notes: true
           draft: false
