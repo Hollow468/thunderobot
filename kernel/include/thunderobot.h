@@ -26,7 +26,11 @@
 /* SMI function codes */
 #define TB_SMI_FUNC_LED		0x0100
 #define TB_SMI_FUNC_HWINFO	0x0200
+#define TB_SMI_FUNC_BIOS	0x0201
 #define TB_SMI_FUNC_GPU		0x0203
+#define TB_SMI_FUNC_FAN_SPEED	0x0205
+#define TB_SMI_FUNC_FAN_CTRL	0x0206
+#define TB_SMI_FUNC_HWINFO2	0x0207
 #define TB_SMI_FUNC_PERF	0x0300
 
 /* SMI buffer size */
@@ -40,7 +44,8 @@
  *   [2-3]   a1: function code
  *   [4-7]   a2: argument 1
  *   [8-11]  a3: argument 2
- *   [12-31] reserved
+ *   [12-15] a4: argument 3
+ *   [16-31] reserved
  */
 static inline void tb_build_smi(u8 *buf, u16 cmd, u16 func, u32 arg1, u32 arg2)
 {
@@ -49,6 +54,16 @@ static inline void tb_build_smi(u8 *buf, u16 cmd, u16 func, u32 arg1, u32 arg2)
 	put_unaligned_le16(func, &buf[2]);
 	put_unaligned_le32(arg1, &buf[4]);
 	put_unaligned_le32(arg2, &buf[8]);
+}
+
+static inline void tb_build_smi3(u8 *buf, u16 cmd, u16 func, u32 arg1, u32 arg2, u32 arg3)
+{
+	memset(buf, 0, TB_SMI_BUF_SIZE);
+	put_unaligned_le16(cmd, &buf[0]);
+	put_unaligned_le16(func, &buf[2]);
+	put_unaligned_le32(arg1, &buf[4]);
+	put_unaligned_le32(arg2, &buf[8]);
+	put_unaligned_le32(arg3, &buf[12]);
 }
 
 /* ACPI WSAA call - defined in thunderobot-core.c */

@@ -563,6 +563,587 @@ static void tb_feature_power_exit(void)
 	}
 }
 
+/* -------------------- Fan -------------------- */
+
+static struct kobject *fan_kobj;
+static DEFINE_MUTEX(fan_lock);
+static u8 cur_fan_mode; /* 0 = auto, 1 = manual */
+static u8 cur_cpu_duty;
+static u8 cur_gpu_duty;
+static u8 cur_sys_duty;
+static u8 fans_count = 2;
+static u32 fan_profile_id;
+
+static int fan_get_hwinfo(u8 *cpu_temp, u8 *gpu_temp, u16 *cpu_rpm, u16 *gpu_rpm)
+{
+	u8 buf[TB_SMI_BUF_SIZE];
+	u8 resp[TB_SMI_BUF_SIZE];
+	int ret;
+
+	tb_build_smi(buf, TB_SMI_CMD_GET, TB_SMI_FUNC_HWINFO, 0, 0);
+
+	mutex_lock(&fan_lock);
+	ret = tb_wsaa_call(buf, resp);
+	mutex_unlock(&fan_lock);
+
+	if (ret)
+		return ret;
+
+	if (cpu_temp)
+		*cpu_temp = resp[4];
+	if (gpu_temp)
+		*gpu_temp = resp[8];
+	if (cpu_rpm)
+		*cpu_rpm = get_unaligned_le16(&resp[12]);
+	if (gpu_rpm)
+		*gpu_rpm = get_unaligned_le16(&resp[16]);
+
+	return 0;
+}
+
+static int fan_get_hwinfo2(u8 *sys_temp, u16 *sys_rpm)
+{
+	u8 buf[TB_SMI_BUF_SIZE];
+	u8 resp[TB_SMI_BUF_SIZE];
+	int ret;
+
+	tb_build_smi(buf, TB_SMI_CMD_GET, TB_SMI_FUNC_HWINFO2, 0, 0);
+
+	mutex_lock(&fan_lock);
+	ret = tb_wsaa_call(buf, resp);
+	mutex_unlock(&fan_lock);
+
+	if (ret)
+		return ret;
+
+	if (sys_temp)
+		*sys_temp = resp[4];
+	if (sys_rpm)
+		*sys_rpm = get_unaligned_le16(&resp[8]);
+
+	return 0;
+}
+
+static int fan_get_mode(u8 *mode)
+{
+	u8 buf[TB_SMI_BUF_SIZE];
+	u8 resp[TB_SMI_BUF_SIZE];
+	int ret;
+
+	tb_build_smi(buf, TB_SMI_CMD_GET, TB_SMI_FUNC_FAN_CTRL, 0, 0);
+
+	mutex_lock(&fan_lock);
+	ret = tb_wsaa_call(buf, resp);
+	mutex_unlock(&fan_lock);
+
+	if (ret)
+		return ret;
+
+	if (mode)
+		*mode = (u8)get_unaligned_le32(&resp[4]);
+
+	return 0;
+}
+
+static int fan_set_mode_raw(u8 mode)
+{
+	u8 buf[TB_SMI_BUF_SIZE];
+
+	tb_build_smi(buf, TB_SMI_CMD_SET, TB_SMI_FUNC_FAN_CTRL, mode, 0);
+	return tb_wsaa_call(buf, NULL);
+}
+
+static int fan_set_speed_raw(u8 cpu_duty, u8 gpu_duty, u8 sys_duty)
+{
+	u8 buf[TB_SMI_BUF_SIZE];
+
+	tb_build_smi3(buf, TB_SMI_CMD_SET, TB_SMI_FUNC_FAN_SPEED,
+		      cpu_duty, gpu_duty, sys_duty);
+	return tb_wsaa_call(buf, NULL);
+}
+
+static int fan_get_profile_raw(u32 *profile)
+{
+	u8 buf[TB_SMI_BUF_SIZE];
+	u8 resp[TB_SMI_BUF_SIZE];
+	int ret;
+
+	tb_build_smi(buf, TB_SMI_CMD_GET, TB_SMI_FUNC_FAN_SPEED, 0, 0);
+	ret = tb_wsaa_call(buf, resp);
+	if (ret)
+		return ret;
+
+	if (profile)
+		*profile = get_unaligned_le32(&resp[4]);
+
+	return 0;
+}
+
+static int fan_detect_capabilities(void)
+{
+	u8 buf[TB_SMI_BUF_SIZE];
+	u8 resp[TB_SMI_BUF_SIZE];
+	u32 skuid;
+	int ret;
+
+	tb_build_smi(buf, TB_SMI_CMD_GET, TB_SMI_FUNC_BIOS, 0, 0);
+	ret = tb_wsaa_call(buf, resp);
+	if (ret == 0) {
+		skuid = get_unaligned_le32(&resp[4]);
+		if (skuid == 52 || skuid == 53)
+			fans_count = 3;
+		else
+			fans_count = 2;
+	} else {
+		fans_count = 2;
+	}
+
+	fan_get_profile_raw(&fan_profile_id);
+	fan_get_mode(&cur_fan_mode);
+
+	return 0;
+}
+
+static ssize_t fan_mode_show(struct kobject *k, struct kobj_attribute *a, char *buf)
+{
+	return sysfs_emit(buf, "%u\n", cur_fan_mode);
+}
+
+static ssize_t fan_mode_store(struct kobject *k, struct kobj_attribute *a,
+			      const char *buf, size_t count)
+{
+	unsigned long val;
+	int ret;
+
+	ret = kstrtoul(buf, 0, &val);
+	if (ret)
+		return ret;
+
+	if (val > 1)
+		return -EINVAL;
+
+	mutex_lock(&fan_lock);
+	if (val == 0) {
+		ret = fan_set_mode_raw(0);
+		if (ret == 0)
+			fan_set_speed_raw(0xFF, 0xFF, 0xFF);
+	} else {
+		ret = fan_set_mode_raw(1);
+		if (ret == 0) {
+			u8 c = cur_cpu_duty ? cur_cpu_duty : 50;
+			u8 g = cur_gpu_duty ? cur_gpu_duty : 50;
+			u8 s = cur_sys_duty ? cur_sys_duty : (fans_count == 3 ? 50 : 0xFF);
+			ret = fan_set_speed_raw(c, g, s);
+		}
+	}
+	if (ret == 0)
+		cur_fan_mode = (u8)val;
+	mutex_unlock(&fan_lock);
+
+	return ret ? ret : count;
+}
+
+static struct kobj_attribute fan_mode_attr =
+	__ATTR(mode, 0644, fan_mode_show, fan_mode_store);
+
+static ssize_t fan_speed_show(struct kobject *k, struct kobj_attribute *a, char *buf)
+{
+	if (fans_count == 3)
+		return sysfs_emit(buf, "%u %u %u\n", cur_cpu_duty, cur_gpu_duty, cur_sys_duty);
+	else
+		return sysfs_emit(buf, "%u %u\n", cur_cpu_duty, cur_gpu_duty);
+}
+
+static ssize_t fan_speed_store(struct kobject *k, struct kobj_attribute *a,
+			       const char *buf, size_t count)
+{
+	unsigned int c = 0, g = 0, s = 0xFF;
+	int n, ret;
+
+	n = sscanf(buf, "%u %u %u", &c, &g, &s);
+	if (n == 1) {
+		if (c > 100 && c != 255)
+			return -EINVAL;
+		g = c;
+		s = (fans_count == 3) ? c : 0xFF;
+	} else if (n == 2) {
+		if ((c > 100 && c != 255) || (g > 100 && g != 255))
+			return -EINVAL;
+		s = (fans_count == 3) ? g : 0xFF;
+	} else if (n == 3) {
+		if ((c > 100 && c != 255) || (g > 100 && g != 255) || (s > 100 && s != 255))
+			return -EINVAL;
+	} else {
+		return -EINVAL;
+	}
+
+	mutex_lock(&fan_lock);
+	if (c == 255 && g == 255 && (s == 255 || s == 0xFF)) {
+		ret = fan_set_mode_raw(0);
+		if (ret == 0) {
+			fan_set_speed_raw(0xFF, 0xFF, 0xFF);
+			cur_fan_mode = 0;
+		}
+	} else {
+		ret = fan_set_mode_raw(1);
+		if (ret == 0) {
+			ret = fan_set_speed_raw((u8)c, (u8)g, (u8)s);
+			if (ret == 0) {
+				cur_cpu_duty = (u8)c;
+				cur_gpu_duty = (u8)g;
+				cur_sys_duty = (u8)s;
+				cur_fan_mode = 1;
+			}
+		}
+	}
+	mutex_unlock(&fan_lock);
+
+	return ret ? ret : count;
+}
+
+static struct kobj_attribute fan_speed_attr =
+	__ATTR(speed, 0644, fan_speed_show, fan_speed_store);
+
+static ssize_t fan_cpu_speed_show(struct kobject *k, struct kobj_attribute *a, char *buf)
+{
+	return sysfs_emit(buf, "%u\n", cur_cpu_duty);
+}
+
+static ssize_t fan_cpu_speed_store(struct kobject *k, struct kobj_attribute *a,
+				   const char *buf, size_t count)
+{
+	unsigned long val;
+	int ret;
+
+	ret = kstrtoul(buf, 0, &val);
+	if (ret)
+		return ret;
+
+	if (val > 100 && val != 255)
+		return -EINVAL;
+
+	mutex_lock(&fan_lock);
+	cur_cpu_duty = (u8)val;
+	if (val == 255 && cur_gpu_duty == 255 && (cur_sys_duty == 255 || fans_count == 2)) {
+		ret = fan_set_mode_raw(0);
+		if (ret == 0) {
+			fan_set_speed_raw(0xFF, 0xFF, 0xFF);
+			cur_fan_mode = 0;
+		}
+	} else {
+		ret = fan_set_mode_raw(1);
+		if (ret == 0) {
+			ret = fan_set_speed_raw(cur_cpu_duty,
+						cur_gpu_duty ? cur_gpu_duty : cur_cpu_duty,
+						fans_count == 3 ? (cur_sys_duty ? cur_sys_duty : cur_cpu_duty) : 0xFF);
+			if (ret == 0)
+				cur_fan_mode = 1;
+		}
+	}
+	mutex_unlock(&fan_lock);
+
+	return ret ? ret : count;
+}
+
+static struct kobj_attribute fan_cpu_speed_attr =
+	__ATTR(cpu_speed, 0644, fan_cpu_speed_show, fan_cpu_speed_store);
+
+static ssize_t fan_gpu_speed_show(struct kobject *k, struct kobj_attribute *a, char *buf)
+{
+	return sysfs_emit(buf, "%u\n", cur_gpu_duty);
+}
+
+static ssize_t fan_gpu_speed_store(struct kobject *k, struct kobj_attribute *a,
+				   const char *buf, size_t count)
+{
+	unsigned long val;
+	int ret;
+
+	ret = kstrtoul(buf, 0, &val);
+	if (ret)
+		return ret;
+
+	if (val > 100 && val != 255)
+		return -EINVAL;
+
+	mutex_lock(&fan_lock);
+	cur_gpu_duty = (u8)val;
+	if (cur_cpu_duty == 255 && val == 255 && (cur_sys_duty == 255 || fans_count == 2)) {
+		ret = fan_set_mode_raw(0);
+		if (ret == 0) {
+			fan_set_speed_raw(0xFF, 0xFF, 0xFF);
+			cur_fan_mode = 0;
+		}
+	} else {
+		ret = fan_set_mode_raw(1);
+		if (ret == 0) {
+			ret = fan_set_speed_raw(cur_cpu_duty ? cur_cpu_duty : (u8)val,
+						cur_gpu_duty,
+						fans_count == 3 ? (cur_sys_duty ? cur_sys_duty : (u8)val) : 0xFF);
+			if (ret == 0)
+				cur_fan_mode = 1;
+		}
+	}
+	mutex_unlock(&fan_lock);
+
+	return ret ? ret : count;
+}
+
+static struct kobj_attribute fan_gpu_speed_attr =
+	__ATTR(gpu_speed, 0644, fan_gpu_speed_show, fan_gpu_speed_store);
+
+static ssize_t fan_sys_speed_show(struct kobject *k, struct kobj_attribute *a, char *buf)
+{
+	return sysfs_emit(buf, "%u\n", cur_sys_duty);
+}
+
+static ssize_t fan_sys_speed_store(struct kobject *k, struct kobj_attribute *a,
+				   const char *buf, size_t count)
+{
+	unsigned long val;
+	int ret;
+
+	ret = kstrtoul(buf, 0, &val);
+	if (ret)
+		return ret;
+
+	if (val > 100 && val != 255)
+		return -EINVAL;
+
+	mutex_lock(&fan_lock);
+	cur_sys_duty = (u8)val;
+	if (cur_cpu_duty == 255 && cur_gpu_duty == 255 && val == 255) {
+		ret = fan_set_mode_raw(0);
+		if (ret == 0) {
+			fan_set_speed_raw(0xFF, 0xFF, 0xFF);
+			cur_fan_mode = 0;
+		}
+	} else {
+		ret = fan_set_mode_raw(1);
+		if (ret == 0) {
+			ret = fan_set_speed_raw(cur_cpu_duty ? cur_cpu_duty : 50,
+						cur_gpu_duty ? cur_gpu_duty : 50,
+						cur_sys_duty);
+			if (ret == 0)
+				cur_fan_mode = 1;
+		}
+	}
+	mutex_unlock(&fan_lock);
+
+	return ret ? ret : count;
+}
+
+static struct kobj_attribute fan_sys_speed_attr =
+	__ATTR(sys_speed, 0644, fan_sys_speed_show, fan_sys_speed_store);
+
+static ssize_t fan_cpu_temp_show(struct kobject *k, struct kobj_attribute *a, char *buf)
+{
+	u8 cpu_temp = 0;
+	int ret = fan_get_hwinfo(&cpu_temp, NULL, NULL, NULL);
+
+	if (ret)
+		return ret;
+	return sysfs_emit(buf, "%u\n", cpu_temp);
+}
+
+static struct kobj_attribute fan_cpu_temp_attr =
+	__ATTR(cpu_temp, 0444, fan_cpu_temp_show, NULL);
+
+static ssize_t fan_gpu_temp_show(struct kobject *k, struct kobj_attribute *a, char *buf)
+{
+	u8 gpu_temp = 0;
+	int ret = fan_get_hwinfo(NULL, &gpu_temp, NULL, NULL);
+
+	if (ret)
+		return ret;
+	return sysfs_emit(buf, "%u\n", gpu_temp);
+}
+
+static struct kobj_attribute fan_gpu_temp_attr =
+	__ATTR(gpu_temp, 0444, fan_gpu_temp_show, NULL);
+
+static ssize_t fan_sys_temp_show(struct kobject *k, struct kobj_attribute *a, char *buf)
+{
+	u8 sys_temp = 0;
+	int ret = fan_get_hwinfo2(&sys_temp, NULL);
+
+	if (ret)
+		return ret;
+	return sysfs_emit(buf, "%u\n", sys_temp);
+}
+
+static struct kobj_attribute fan_sys_temp_attr =
+	__ATTR(sys_temp, 0444, fan_sys_temp_show, NULL);
+
+static ssize_t fan_cpu_rpm_show(struct kobject *k, struct kobj_attribute *a, char *buf)
+{
+	u16 cpu_rpm = 0;
+	int ret = fan_get_hwinfo(NULL, NULL, &cpu_rpm, NULL);
+
+	if (ret)
+		return ret;
+	return sysfs_emit(buf, "%u\n", cpu_rpm);
+}
+
+static struct kobj_attribute fan_cpu_rpm_attr =
+	__ATTR(cpu_rpm, 0444, fan_cpu_rpm_show, NULL);
+
+static ssize_t fan_gpu_rpm_show(struct kobject *k, struct kobj_attribute *a, char *buf)
+{
+	u16 gpu_rpm = 0;
+	int ret = fan_get_hwinfo(NULL, NULL, NULL, &gpu_rpm);
+
+	if (ret)
+		return ret;
+	return sysfs_emit(buf, "%u\n", gpu_rpm);
+}
+
+static struct kobj_attribute fan_gpu_rpm_attr =
+	__ATTR(gpu_rpm, 0444, fan_gpu_rpm_show, NULL);
+
+static ssize_t fan_sys_rpm_show(struct kobject *k, struct kobj_attribute *a, char *buf)
+{
+	u16 sys_rpm = 0;
+	int ret = fan_get_hwinfo2(NULL, &sys_rpm);
+
+	if (ret)
+		return ret;
+	return sysfs_emit(buf, "%u\n", sys_rpm);
+}
+
+static struct kobj_attribute fan_sys_rpm_attr =
+	__ATTR(sys_rpm, 0444, fan_sys_rpm_show, NULL);
+
+static ssize_t fan_fans_count_show(struct kobject *k, struct kobj_attribute *a, char *buf)
+{
+	return sysfs_emit(buf, "%u\n", fans_count);
+}
+
+static struct kobj_attribute fan_fans_count_attr =
+	__ATTR(fans_count, 0444, fan_fans_count_show, NULL);
+
+static ssize_t fan_profile_show(struct kobject *k, struct kobj_attribute *a, char *buf)
+{
+	return sysfs_emit(buf, "%u\n", fan_profile_id);
+}
+
+static struct kobj_attribute fan_profile_attr =
+	__ATTR(profile, 0444, fan_profile_show, NULL);
+
+static ssize_t fan_status_show(struct kobject *k, struct kobj_attribute *a, char *buf)
+{
+	u8 cpu_temp = 0, gpu_temp = 0, sys_temp = 0;
+	u16 cpu_rpm = 0, gpu_rpm = 0, sys_rpm = 0;
+	int ret;
+
+	ret = fan_get_hwinfo(&cpu_temp, &gpu_temp, &cpu_rpm, &gpu_rpm);
+	if (ret)
+		return ret;
+
+	if (fans_count == 3) {
+		fan_get_hwinfo2(&sys_temp, &sys_rpm);
+		return sysfs_emit(buf,
+				  "mode=%u (%s)\n"
+				  "fans_count=%u\n"
+				  "profile=%u\n"
+				  "cpu_temp=%u C\n"
+				  "cpu_rpm=%u RPM\n"
+				  "cpu_duty=%u%%\n"
+				  "gpu_temp=%u C\n"
+				  "gpu_rpm=%u RPM\n"
+				  "gpu_duty=%u%%\n"
+				  "sys_temp=%u C\n"
+				  "sys_rpm=%u RPM\n"
+				  "sys_duty=%u%%\n",
+				  cur_fan_mode, cur_fan_mode ? "manual" : "auto",
+				  fans_count,
+				  fan_profile_id,
+				  cpu_temp, cpu_rpm, cur_cpu_duty,
+				  gpu_temp, gpu_rpm, cur_gpu_duty,
+				  sys_temp, sys_rpm, cur_sys_duty);
+	} else {
+		return sysfs_emit(buf,
+				  "mode=%u (%s)\n"
+				  "fans_count=%u\n"
+				  "profile=%u\n"
+				  "cpu_temp=%u C\n"
+				  "cpu_rpm=%u RPM\n"
+				  "cpu_duty=%u%%\n"
+				  "gpu_temp=%u C\n"
+				  "gpu_rpm=%u RPM\n"
+				  "gpu_duty=%u%%\n",
+				  cur_fan_mode, cur_fan_mode ? "manual" : "auto",
+				  fans_count,
+				  fan_profile_id,
+				  cpu_temp, cpu_rpm, cur_cpu_duty,
+				  gpu_temp, gpu_rpm, cur_gpu_duty);
+	}
+}
+
+static struct kobj_attribute fan_status_attr =
+	__ATTR(status, 0444, fan_status_show, NULL);
+
+static struct attribute *fan_attrs[] = {
+	&fan_mode_attr.attr,
+	&fan_speed_attr.attr,
+	&fan_cpu_speed_attr.attr,
+	&fan_gpu_speed_attr.attr,
+	&fan_sys_speed_attr.attr,
+	&fan_cpu_temp_attr.attr,
+	&fan_gpu_temp_attr.attr,
+	&fan_sys_temp_attr.attr,
+	&fan_cpu_rpm_attr.attr,
+	&fan_gpu_rpm_attr.attr,
+	&fan_sys_rpm_attr.attr,
+	&fan_fans_count_attr.attr,
+	&fan_profile_attr.attr,
+	&fan_status_attr.attr,
+	NULL,
+};
+
+static struct attribute_group fan_attr_group = {
+	.attrs = fan_attrs,
+};
+
+static int tb_feature_fan_init(struct kobject *parent)
+{
+	int ret;
+
+	fan_kobj = kobject_create_and_add("fan", parent);
+	if (!fan_kobj) {
+		pr_err("thunderobot: failed to create fan sysfs directory\n");
+		return -ENOMEM;
+	}
+
+	ret = sysfs_create_group(fan_kobj, &fan_attr_group);
+	if (ret) {
+		pr_err("thunderobot: failed to create fan sysfs group\n");
+		kobject_put(fan_kobj);
+		fan_kobj = NULL;
+		return ret;
+	}
+
+	fan_detect_capabilities();
+	pr_info("thunderobot: fan feature registered (fans=%u, profile=%u)\n",
+		fans_count, fan_profile_id);
+	return 0;
+}
+
+static void tb_feature_fan_exit(void)
+{
+	if (cur_fan_mode == 1) {
+		/* Restore EC auto fan control on module unload */
+		fan_set_mode_raw(0);
+		fan_set_speed_raw(0xFF, 0xFF, 0xFF);
+	}
+
+	if (fan_kobj) {
+		sysfs_remove_group(fan_kobj, &fan_attr_group);
+		kobject_put(fan_kobj);
+		fan_kobj = NULL;
+	}
+}
+
 /* -------------------- Unified lifecycle -------------------- */
 
 static const struct tb_feature tb_features[] = {
@@ -580,6 +1161,11 @@ static const struct tb_feature tb_features[] = {
 		.name = "power",
 		.init = tb_feature_power_init,
 		.exit = tb_feature_power_exit,
+	},
+	{
+		.name = "fan",
+		.init = tb_feature_fan_init,
+		.exit = tb_feature_fan_exit,
 	},
 };
 
