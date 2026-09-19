@@ -1,3 +1,4 @@
+mod fan;
 mod gpu;
 mod led;
 mod power;
@@ -10,7 +11,7 @@ use clap_complete::{generate, Shell};
 
 #[derive(Parser)]
 #[command(name = "thunderobot")]
-#[command(version = "1.2.0")]
+#[command(version = "1.3.0")]
 #[command(about = "Thunderobot laptop management tool")]
 struct Cli {
     #[command(subcommand)]
@@ -19,6 +20,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Fan speed and mode control
+    Fan {
+        #[command(subcommand)]
+        action: fan::FanAction,
+    },
     /// GPU mode management
     Gpu {
         #[command(subcommand)]
@@ -46,6 +52,7 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
+        Commands::Fan { action } => fan::run(action),
         Commands::Gpu { action } => gpu::run(action),
         Commands::Led { action } => led::run(action),
         Commands::Power { action } => power::run(action),
