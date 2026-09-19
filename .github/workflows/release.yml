@@ -1,0 +1,141 @@
+name: Release Cargo Binary
+
+on:
+  push:
+    tags:
+      - 'v*'
+      - '[0-9]+.[0-9]+.[0-9]+*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag name (e.g. v1.3.0)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: Build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            use_cross: false
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            use_cross: false
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            use_cross: true
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+            use_cross: true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install musl-tools (for x86_64-unknown-linux-musl)
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Install cross (for cross-compilation)
+        if: matrix.use_cross
+        uses: taiki-e/install-action@cross
+
+      - name: Build release binary
+        run: |
+          if [ "${{ matrix.use_cross }}" = "true" ]; then
+            cross build --release --target ${{ matrix.target }} --manifest-path cli/Cargo.toml
+          else
+            cargo build --release --target ${{ matrix.target }} --manifest-path cli/Cargo.toml
+          fi
+
+      - name: Generate shell completions
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: |
+          mkdir -p completions
+          ./cli/target/${{ matrix.target }}/release/thunderobot completions bash > completions/thunderobot.bash
+          ./cli/target/${{ matrix.target }}/release/thunderobot completions zsh > completions/_thunderobot
+          ./cli/target/${{ matrix.target }}/release/thunderobot completions fish > completions/thunderobot.fish
+          ./cli/target/${{ matrix.target }}/release/thunderobot completions elvish > completions/thunderobot.elv
+          ./cli/target/${{ matrix.target }}/release/thunderobot completions powershell > completions/_thunderobot.ps1
+
+      - name: Package release archive
+        id: package
+        shell: bash
+        run: |
+          TAG_NAME="${GITHUB_REF_NAME}"
+          if [ -z "${TAG_NAME}" ] || [ "${TAG_NAME}" = "main" ] || [ "${TAG_NAME}" = "dev" ]; then
+            TAG_NAME="${{ inputs.tag }}"
+          fi
+          if [ -z "${TAG_NAME}" ]; then
+            TAG_NAME=$(grep -E '^version = ' cli/Cargo.toml | head -n 1 | cut -d '"' -f 2)
+            TAG_NAME="v${TAG_NAME}"
+          fi
+
+          BIN_NAME="thunderobot"
+          PKG_NAME="${BIN_NAME}-${TAG_NAME}-${{ matrix.target }}"
+          STAGE_DIR="/tmp/${PKG_NAME}"
+          mkdir -p "${STAGE_DIR}"
+
+          cp "cli/target/${{ matrix.target }}/release/${BIN_NAME}" "${STAGE_DIR}/"
+          cp README.md "${STAGE_DIR}/"
+
+          if [ "${{ matrix.target }}" = "x86_64-unknown-linux-gnu" ] && [ -d completions ]; then
+            cp -r completions "${STAGE_DIR}/"
+          fi
+
+          ARCHIVE_FILE="${PKG_NAME}.tar.gz"
+          tar -czf "${ARCHIVE_FILE}" -C "/tmp" "${PKG_NAME}"
+          sha256sum "${ARCHIVE_FILE}" > "${ARCHIVE_FILE}.sha256"
+
+          echo "archive=${ARCHIVE_FILE}" >> $GITHUB_OUTPUT
+          echo "checksum=${ARCHIVE_FILE}.sha256" >> $GITHUB_OUTPUT
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: |
+            ${{ steps.package.outputs.archive }}
+            ${{ steps.package.outputs.checksum }}
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: build-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Collect release assets
+        run: |
+          mkdir -p dist
+          find release-artifacts -type f \( -name "*.tar.gz" -o -name "*.sha256" \) -exec cp {} dist/ \;
+          ls -la dist/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          draft: false
+          prerelease: false
